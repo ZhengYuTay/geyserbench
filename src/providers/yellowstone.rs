@@ -1,7 +1,6 @@
 use std::{collections::HashMap, error::Error, sync::atomic::Ordering};
 
 use futures_util::{sink::SinkExt, stream::StreamExt};
-use solana_pubkey::Pubkey;
 use tokio::task;
 use tonic::transport::ClientTlsConfig;
 use tracing::{Level, error, info, warn};
@@ -19,7 +18,8 @@ use crate::{
 use super::{
     GeyserProvider, ProviderContext,
     common::{
-        TransactionAccumulator, build_signature_envelope, enqueue_signature, fatal_connection_error,
+        TransactionAccumulator, build_signature_envelope, enqueue_signature,
+        fatal_connection_error, parse_tracked_accounts,
     },
     yellowstone_client::GeyserGrpcClient,
 };
@@ -58,7 +58,7 @@ async fn process_yellowstone_endpoint(
 
     let signature_sender = signature_tx;
 
-    let account_pubkey = config.account.parse::<Pubkey>()?;
+    let tracked_accounts = parse_tracked_accounts(&config.accounts)?;
     let endpoint_name = endpoint.name.clone();
     let mut log_file = if tracing::enabled!(Level::TRACE) {
         Some(open_log_file(&endpoint_name)?)
@@ -96,16 +96,15 @@ async fn process_yellowstone_endpoint(
     let (mut subscribe_tx, mut stream) = client.subscribe().await?;
     let commitment: CommitmentLevel = config.commitment.into();
 
-    let mut transactions = HashMap::new();
-    transactions.insert(
+    let transactions = HashMap::from([(
         "account".to_string(),
         SubscribeRequestFilterTransactions {
-            account_include: vec![config.account.clone()],
+            account_include: config.accounts.clone(),
             account_exclude: vec![],
             account_required: vec![],
             ..Default::default()
         },
-    );
+    )]);
 
     subscribe_tx
         .send(SubscribeRequest {
@@ -140,10 +139,11 @@ async fn process_yellowstone_endpoint(
                             Some(UpdateOneof::Transaction(tx_msg)) => {
                                 if let Some(tx) = tx_msg.transaction.as_ref()
                                     && let Some(msg) = tx.transaction.as_ref().and_then(|t| t.message.as_ref()) {
-                                        let has_account = msg
-                                            .account_keys
-                                            .iter()
-                                            .any(|key| key.as_slice() == account_pubkey.as_ref());
+                                        let has_account = msg.account_keys.iter().any(|key| {
+                                            tracked_accounts
+                                                .iter()
+                                                .any(|account| key.as_slice() == account.as_ref())
+                                        });
 
                                         if has_account {
                                             let wallclock = get_current_timestamp();

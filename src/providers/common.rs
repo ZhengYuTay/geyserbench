@@ -7,6 +7,7 @@ use crate::{
     backend::{SignatureEnvelope, SignatureObservation},
     utils::{Comparator, TransactionData},
 };
+use solana_pubkey::Pubkey;
 
 #[derive(Default)]
 pub struct TransactionAccumulator {
@@ -46,6 +47,12 @@ impl TransactionAccumulator {
     pub fn into_inner(self) -> HashMap<String, TransactionData> {
         self.entries
     }
+}
+
+pub fn parse_tracked_accounts(
+    accounts: &[String],
+) -> Result<Vec<Pubkey>, solana_pubkey::ParsePubkeyError> {
+    accounts.iter().map(|value| value.parse()).collect()
 }
 
 pub fn fatal_connection_error(endpoint: &str, err: impl std::fmt::Display) -> ! {

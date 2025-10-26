@@ -45,7 +45,10 @@ During a run, GeyserBench prints progress updates followed by a side-by-side com
 ```toml
 [config]
 transactions = 1000
-account = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+accounts = [
+  "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  "8jMYc2xUpw33333333333333333333333333333333"
+]
 commitment = "processed"  # processed | confirmed | finalized
 
 [[endpoint]]
@@ -66,7 +69,7 @@ kind = "yellowstone"
 ```
 
 - `config.transactions` sets how many signatures to evaluate (backend streaming automatically disables itself for extremely large runs).
-- `config.account` is the pubkey monitored for transactions during the benchmark.
+- `config.accounts` is the list of pubkeys monitored during the benchmark. Use a single entry or supply multiple to broaden coverage (you can also keep using the legacy `account = "<pubkey>"` syntax; it maps to a single-entry list).
 - `config.commitment` accepts `processed`, `confirmed`, or `finalized`.
 - Repeat `[[endpoint]]` blocks for each feed. Supported `kind` values: `yellowstone`, `arpc`, `thor`, `shredstream`, `shreder`, and `jetstream`. `x_token` is optional.
 

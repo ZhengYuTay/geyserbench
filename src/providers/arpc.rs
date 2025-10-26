@@ -2,7 +2,6 @@ use std::{collections::HashMap, error::Error, sync::atomic::Ordering};
 
 use futures::{SinkExt, channel::mpsc::unbounded};
 use futures_util::stream::StreamExt;
-use solana_pubkey::Pubkey;
 use tokio::task;
 use tracing::{Level, info};
 
@@ -14,7 +13,8 @@ use crate::{
 use super::{
     GeyserProvider, ProviderContext,
     common::{
-        TransactionAccumulator, build_signature_envelope, enqueue_signature, fatal_connection_error,
+        TransactionAccumulator, build_signature_envelope, enqueue_signature,
+        fatal_connection_error, parse_tracked_accounts,
     },
 };
 
@@ -60,7 +60,7 @@ async fn process_arpc_endpoint(
         progress,
     } = context;
     let signature_sender = signature_tx;
-    let account_pubkey = config.account.parse::<Pubkey>()?;
+    let tracked_accounts = parse_tracked_accounts(&config.accounts)?;
     let endpoint_name = endpoint.name.clone();
 
     let mut log_file = if tracing::enabled!(Level::TRACE) {
@@ -81,7 +81,7 @@ async fn process_arpc_endpoint(
     let transactions = HashMap::from([(
         "account".to_string(),
         SubscribeRequestFilterTransactions {
-            account_include: vec![config.account.clone()],
+            account_include: config.accounts.clone(),
             account_exclude: vec![],
             account_required: vec![],
         },
@@ -110,9 +110,11 @@ async fn process_arpc_endpoint(
                 let Some(Ok(msg)) = message else { continue };
                 let Some(tx) = msg.transaction else { continue };
 
-                let has_account = tx.account_keys
-                    .iter()
-                    .any(|k| k.as_slice() == account_pubkey.as_ref());
+                let has_account = tx.account_keys.iter().any(|key| {
+                    tracked_accounts
+                        .iter()
+                        .any(|account| key.as_slice() == account.as_ref())
+                });
                 if !has_account { continue }
 
                 let wallclock = get_current_timestamp();

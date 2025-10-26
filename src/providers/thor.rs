@@ -7,7 +7,6 @@ use crate::{
 use futures_util::stream::StreamExt;
 
 use prost::Message;
-use solana_pubkey::Pubkey;
 use tokio::task;
 use tonic::{Request, Streaming, metadata::MetadataValue, transport::Channel};
 use tracing::{Level, info};
@@ -15,7 +14,8 @@ use tracing::{Level, info};
 use super::{
     GeyserProvider, ProviderContext,
     common::{
-        TransactionAccumulator, build_signature_envelope, enqueue_signature, fatal_connection_error,
+        TransactionAccumulator, build_signature_envelope, enqueue_signature,
+        fatal_connection_error, parse_tracked_accounts,
     },
 };
 
@@ -64,7 +64,7 @@ async fn process_thor_endpoint(
         progress,
     } = context;
     let signature_sender = signature_tx;
-    let account_pubkey = config.account.parse::<Pubkey>()?;
+    let tracked_accounts = parse_tracked_accounts(&config.accounts)?;
     let endpoint_name = endpoint.name.clone();
 
     let mut log_file = if tracing::enabled!(Level::TRACE) {
@@ -127,10 +127,11 @@ async fn process_thor_endpoint(
                 let Some(transaction) = transaction_event.transaction.as_ref() else { continue };
                 let Some(message) = transaction.message.as_ref() else { continue };
 
-                let has_account = message
-                    .account_keys
-                    .iter()
-                    .any(|key| key.as_slice() == account_pubkey.as_ref());
+                let has_account = message.account_keys.iter().any(|key| {
+                    tracked_accounts
+                        .iter()
+                        .any(|account| key.as_slice() == account.as_ref())
+                });
 
                 if has_account {
                     let wallclock = get_current_timestamp();

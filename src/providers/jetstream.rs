@@ -1,6 +1,5 @@
 use futures::{SinkExt, channel::mpsc::unbounded};
 use futures_util::stream::StreamExt;
-use solana_pubkey::Pubkey;
 use std::{collections::HashMap, error::Error, sync::atomic::Ordering};
 use tokio::task;
 use tracing::{Level, info};
@@ -13,7 +12,8 @@ use crate::{
 use super::{
     GeyserProvider, ProviderContext,
     common::{
-        TransactionAccumulator, build_signature_envelope, enqueue_signature, fatal_connection_error,
+        TransactionAccumulator, build_signature_envelope, enqueue_signature,
+        fatal_connection_error, parse_tracked_accounts,
     },
 };
 
@@ -56,7 +56,7 @@ async fn process_jetstream_endpoint(
         progress,
     } = context;
     let signature_sender = signature_tx;
-    let account_pubkey = config.account.parse::<Pubkey>()?;
+    let tracked_accounts = parse_tracked_accounts(&config.accounts)?;
     let endpoint_name = endpoint.name.clone();
     let mut log_file = if tracing::enabled!(Level::TRACE) {
         Some(open_log_file(&endpoint_name)?)
@@ -73,16 +73,15 @@ async fn process_jetstream_endpoint(
         .unwrap_or_else(|err| fatal_connection_error(&endpoint_name, err));
     info!(endpoint = %endpoint_name, "Connected");
 
-    let mut transactions: HashMap<String, jetstream::SubscribeRequestFilterTransactions> =
-        HashMap::new();
-    transactions.insert(
-        String::from("account"),
-        jetstream::SubscribeRequestFilterTransactions {
-            account_exclude: vec![],
-            account_include: vec![],
-            account_required: vec![config.account.clone()],
-        },
-    );
+    let transactions: HashMap<String, jetstream::SubscribeRequestFilterTransactions> =
+        HashMap::from([(
+            String::from("account"),
+            jetstream::SubscribeRequestFilterTransactions {
+                account_exclude: vec![],
+                account_include: config.accounts.clone(),
+                account_required: vec![],
+            },
+        )]);
 
     let request = jetstream::SubscribeRequest {
         transactions,
@@ -111,10 +110,11 @@ async fn process_jetstream_endpoint(
                 let Some(jetstream::subscribe_update::UpdateOneof::Transaction(tx)) = msg.update_oneof else { continue };
                 let Some(tx_info) = &tx.transaction else { continue };
 
-                let has_account = tx_info
-                    .account_keys
-                    .iter()
-                    .any(|key| key.as_slice() == account_pubkey.as_ref());
+                let has_account = tx_info.account_keys.iter().any(|key| {
+                    tracked_accounts
+                        .iter()
+                        .any(|account| key.as_slice() == account.as_ref())
+                });
                 if !has_account { continue }
 
                 let wallclock = get_current_timestamp();

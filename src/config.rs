@@ -1,7 +1,12 @@
 use crate::proto::geyser::CommitmentLevel;
 use anyhow::{Context, Result, anyhow};
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize, Serialize,
+    de::{self, Deserializer},
+};
 use std::{fs, path::Path};
+
+const DEFAULT_ACCOUNT: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ConfigToml {
@@ -14,7 +19,12 @@ pub struct ConfigToml {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Config {
     pub transactions: i32,
-    pub account: String,
+    #[serde(
+        alias = "account",
+        default = "default_accounts",
+        deserialize_with = "deserialize_accounts"
+    )]
+    pub accounts: Vec<String>,
     pub commitment: ArgsCommitment,
 }
 
@@ -104,7 +114,7 @@ impl ConfigToml {
         let default_config = ConfigToml {
             config: Config {
                 transactions: 1000,
-                account: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA".to_string(),
+                accounts: default_accounts(),
                 commitment: ArgsCommitment::Processed,
             },
             endpoint: vec![
@@ -139,4 +149,31 @@ impl ConfigToml {
             Self::create_default(path)
         }
     }
+}
+
+fn default_accounts() -> Vec<String> {
+    vec![DEFAULT_ACCOUNT.to_string()]
+}
+
+fn deserialize_accounts<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum AccountsField {
+        Single(String),
+        Multiple(Vec<String>),
+    }
+
+    let accounts = match AccountsField::deserialize(deserializer)? {
+        AccountsField::Single(value) => vec![value],
+        AccountsField::Multiple(values) => values,
+    };
+
+    if accounts.is_empty() {
+        return Err(de::Error::custom("at least one account must be specified"));
+    }
+
+    Ok(accounts)
 }

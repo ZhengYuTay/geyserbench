@@ -3,8 +3,6 @@ use std::{error::Error, sync::atomic::Ordering};
 use tokio::task;
 use tracing::{Level, error, info};
 
-use solana_pubkey::Pubkey;
-
 use crate::{
     config::{Config, Endpoint},
     utils::{TransactionData, get_current_timestamp, open_log_file, write_log_entry},
@@ -13,7 +11,8 @@ use crate::{
 use super::{
     GeyserProvider, ProviderContext,
     common::{
-        TransactionAccumulator, build_signature_envelope, enqueue_signature, fatal_connection_error,
+        TransactionAccumulator, build_signature_envelope, enqueue_signature,
+        fatal_connection_error, parse_tracked_accounts,
     },
 };
 
@@ -54,7 +53,7 @@ async fn process_shredstream_endpoint(
         progress,
     } = context;
     let signature_sender = signature_tx;
-    let account_pubkey = config.account.parse::<Pubkey>()?;
+    let tracked_accounts = parse_tracked_accounts(&config.accounts)?;
     let endpoint_name = endpoint.name.clone();
     let mut log_file = if tracing::enabled!(Level::TRACE) {
         Some(open_log_file(&endpoint_name)?)
@@ -102,7 +101,7 @@ async fn process_shredstream_endpoint(
                         .message
                         .static_account_keys()
                         .iter()
-                        .any(|key| key == &account_pubkey);
+                        .any(|key| tracked_accounts.iter().any(|account| account == key));
 
                     if !has_account {
                         continue;

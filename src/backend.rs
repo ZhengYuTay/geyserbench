@@ -116,6 +116,8 @@ struct StartAckDetails {
 struct BackendConfigPayload {
     transactions: u32,
     account: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    accounts: Vec<String>,
     commitment: String,
 }
 
@@ -548,9 +550,17 @@ fn compute_proof(
 
 impl BackendConfigPayload {
     fn from_config(config: &Config) -> Self {
+        let primary_account = config.accounts.first().cloned().unwrap_or_default();
+        let additional_accounts = if config.accounts.len() > 1 {
+            config.accounts.clone()
+        } else {
+            Vec::new()
+        };
+
         Self {
             transactions: config.transactions.max(0) as u32,
-            account: config.account.clone(),
+            account: primary_account,
+            accounts: additional_accounts,
             commitment: config.commitment.as_str().to_string(),
         }
     }
