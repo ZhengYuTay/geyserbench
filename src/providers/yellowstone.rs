@@ -90,7 +90,6 @@ async fn process_yellowstone_endpoint(
 
     info!(endpoint = %endpoint_name, "Connected");
 
-    let (mut subscribe_tx, mut stream) = client.subscribe().await?;
     let commitment: CommitmentLevel = config.commitment.into();
 
     let accounts_filters = HashMap::from([(
@@ -113,8 +112,8 @@ async fn process_yellowstone_endpoint(
         },
     )]);
 
-    subscribe_tx
-        .send(SubscribeRequest {
+    let (mut subscribe_tx, mut stream) = client
+        .subscribe_with_request(Some(SubscribeRequest {
             slots: HashMap::default(),
             accounts: accounts_filters,
             transactions: transactions_filters,
@@ -126,7 +125,7 @@ async fn process_yellowstone_endpoint(
             accounts_data_slice: Vec::default(),
             ping: None,
             from_slot: None,
-        })
+        }))
         .await?;
 
     let mut accumulator = TransactionAccumulator::new();
